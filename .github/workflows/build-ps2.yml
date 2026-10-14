@@ -2,7 +2,6 @@ name: Build PS2 White Screen ELF
 
 on:
   workflow_dispatch:
-  push:
 
 permissions:
   contents: write
@@ -18,98 +17,84 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y \
-            git \
-            make \
-            gcc \
-            g++ \
-            cmake \
-            patch \
-            texinfo \
-            flex \
-            bison \
-            wget \
-            curl \
-            unzip \
-            python3 \
-            libgmp-dev \
-            libmpfr-dev \
-            libmpc-dev
+          sudo apt install -y git make gcc g++ cmake patch texinfo flex bison wget curl python3 libgmp-dev libmpfr-dev libmpc-dev
 
       - name: Download PS2DEV
         run: |
-          git clone --depth=1 https://github.com/ps2dev/ps2dev.git $HOME/ps2dev
+          git clone --depth=1 https://github.com/ps2dev/ps2dev.git "$HOME/ps2dev"
 
-      - name: Setup PS2DEV environment
+      - name: Build PS2DEV
         run: |
-          echo "PS2DEV=$HOME/ps2dev" >> $GITHUB_ENV
-          echo "PS2SDK=$HOME/ps2dev/ps2sdk" >> $GITHUB_ENV
-          echo "$HOME/ps2dev/bin" >> $GITHUB_PATH
-          echo "$HOME/ps2dev/ee/bin" >> $GITHUB_PATH
-          echo "$HOME/ps2dev/iop/bin" >> $GITHUB_PATH
-          echo "$HOME/ps2dev/dvp/bin" >> $GITHUB_PATH
+          export PS2DEV="$HOME/ps2dev"
+          export PS2SDK="$PS2DEV/ps2sdk"
+          export PATH="$PS2DEV/bin:$PS2DEV/ee/bin:$PATH"
 
-      - name: Build PS2DEV toolchain
-        run: |
-          cd $HOME/ps2dev
-
+          cd "$PS2DEV"
           chmod +x build-all.sh
-
           ./build-all.sh
 
-      - name: Create PS2 project
+      - name: Create source
         run: |
           mkdir -p ps2_white_screen
 
-          cat > ps2_white_screen/main.c <<'EOF'
-#include <tamtypes.h>
-#include <kernel.h>
-#include <debug.h>
+          printf '%s\n' \
+          '#include <tamtypes.h>' \
+          '#include <kernel.h>' \
+          '#include <debug.h>' \
+          '#include <gsKit.h>' \
+          '#include <dmaKit.h>' \
+          '' \
+          'int main(void)' \
+          '{' \
+          '    GSGLOBAL *gsGlobal;' \
+          '' \
+          '    dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8);' \
+          '    dmaKit_chan_init(DMA_CHANNEL_GIF);' \
+          '' \
+          '    gsGlobal = gsKit_init_global();' \
+          '    gsKit_init_screen(gsGlobal);' \
+          '' \
+          '    gsKit_clear(gsGlobal, GS_SETREG_RGBAQ(255,255,255,0x80,0));' \
+          '    gsKit_queue_exec(gsGlobal);' \
+          '' \
+          '    init_scr();' \
+          '    scr_clear();' \
+          '' \
+          '    scr_printf("This is a white screen. Restart your console to exit.");' \
+          '' \
+          '    while(1)' \
+          '    {' \
+          '        nopdelay();' \
+          '    }' \
+          '' \
+          '    return 0;' \
+          '}' \
+          > ps2_white_screen/main.c
 
-int main(void)
-{
-    init_scr();
-
-    scr_clear();
-
-    scr_printf(
-        "This is a white screen. Restart your console to exit."
-    );
-
-    while (1)
-    {
-        nopdelay();
-    }
-
-    return 0;
-}
-EOF
-
-      - name: Compile PS2 ELF
+      - name: Compile ELF
         run: |
-          cd ps2_white_screen
+          export PS2DEV="$HOME/ps2dev"
+          export PS2SDK="$PS2DEV/ps2sdk"
+          export PATH="$PS2DEV/bin:$PS2DEV/ee/bin:$PATH"
+
+          mkdir -p output
 
           ee-gcc \
             -O2 \
-            -o white_screen.elf \
-            main.c \
+            -o output/white_screen.elf \
+            ps2_white_screen/main.c \
+            -lgsKit \
+            -ldmaKit \
             -ldebug \
             -lkernel
 
-      - name: Put ELF into repository
-        run: |
-          mkdir -p output
-          cp ps2_white_screen/white_screen.elf output/
-
-      - name: Commit generated ELF
+      - name: Commit ELF binary
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add output/white_screen.elf
 
-          git commit \
-            -m "Build PS2 white screen ELF" \
-            || echo "No changes to commit"
+          git commit -m "Build PS2 white screen ELF" || echo "Nothing to commit"
 
           git push
