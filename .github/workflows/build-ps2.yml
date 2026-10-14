@@ -9,14 +9,41 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     container:
-      image: ps2dev/ps2dev:latest
+      image: ps2dev/ps2dev
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create PS2 project
+      - name: Find PS2 compiler
+        run: |
+          find / -name ee-gcc 2>/dev/null || true
+
+      - name: Setup PS2DEV paths
+        run: |
+          EE_GCC=$(find / -name ee-gcc 2>/dev/null | head -n 1)
+
+          if [ -z "$EE_GCC" ]; then
+            echo "ee-gcc not found"
+            exit 1
+          fi
+
+          EE_BIN=$(dirname "$EE_GCC")
+          PS2DEV=$(dirname "$(dirname "$EE_BIN")")
+
+          echo "PS2DEV=$PS2DEV" >> $GITHUB_ENV
+          echo "PS2SDK=$PS2DEV/ps2sdk" >> $GITHUB_ENV
+
+          echo "$EE_BIN" >> $GITHUB_PATH
+
+      - name: Check compiler
+        run: |
+          which ee-gcc
+          ee-gcc --version
+
+      - name: Create PS2 source
         run: |
           mkdir -p ps2_white_screen
 
@@ -24,6 +51,7 @@ jobs:
           '#include <tamtypes.h>' \
           '#include <kernel.h>' \
           '#include <debug.h>' \
+          '#include <graph.h>' \
           '' \
           'int main(void)' \
           '{' \
@@ -52,7 +80,7 @@ jobs:
             -ldebug \
             -lkernel
 
-      - name: Commit ELF
+      - name: Commit ELF binary
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
