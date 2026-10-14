@@ -27,17 +27,34 @@ jobs:
             patch \
             texinfo \
             flex \
-            bison
+            bison \
+            wget \
+            curl \
+            unzip \
+            python3 \
+            libgmp-dev \
+            libmpfr-dev \
+            libmpc-dev
 
-      - name: Download PS2DEV toolchain
+      - name: Download PS2DEV
         run: |
-          git clone https://github.com/ps2dev/ps2dev.git ~/ps2dev
+          git clone --depth=1 https://github.com/ps2dev/ps2dev.git $HOME/ps2dev
+
+      - name: Setup PS2DEV environment
+        run: |
+          echo "PS2DEV=$HOME/ps2dev" >> $GITHUB_ENV
+          echo "PS2SDK=$HOME/ps2dev/ps2sdk" >> $GITHUB_ENV
+          echo "$HOME/ps2dev/bin" >> $GITHUB_PATH
+          echo "$HOME/ps2dev/ee/bin" >> $GITHUB_PATH
+          echo "$HOME/ps2dev/iop/bin" >> $GITHUB_PATH
+          echo "$HOME/ps2dev/dvp/bin" >> $GITHUB_PATH
 
       - name: Build PS2DEV toolchain
         run: |
-          cd ~/ps2dev
-          export PS2DEV=$HOME/ps2dev
-          export PATH=$PS2DEV/bin:$PATH
+          cd $HOME/ps2dev
+
+          chmod +x build-all.sh
+
           ./build-all.sh
 
       - name: Create PS2 project
@@ -45,57 +62,54 @@ jobs:
           mkdir -p ps2_white_screen
 
           cat > ps2_white_screen/main.c <<'EOF'
-          #include <tamtypes.h>
-          #include <kernel.h>
-          #include <debug.h>
+#include <tamtypes.h>
+#include <kernel.h>
+#include <debug.h>
 
-          int main(void)
-          {
-              init_scr();
-              scr_clear();
+int main(void)
+{
+    init_scr();
 
-              scr_printf(
-                  "This is a white screen. Restart your console to exit."
-              );
+    scr_clear();
 
-              while (1)
-              {
-                  nopdelay();
-              }
+    scr_printf(
+        "This is a white screen. Restart your console to exit."
+    );
 
-              return 0;
-          }
-          EOF
+    while (1)
+    {
+        nopdelay();
+    }
 
-      - name: Compile ELF
+    return 0;
+}
+EOF
+
+      - name: Compile PS2 ELF
         run: |
-          export PS2DEV=$HOME/ps2dev
-          export PS2SDK=$PS2DEV/ps2sdk
-          export PATH=$PS2DEV/bin:$PS2DEV/ee/bin:$PATH
-
           cd ps2_white_screen
 
           ee-gcc \
-            -T$PS2SDK/ee/startup/linkfile \
+            -O2 \
             -o white_screen.elf \
             main.c \
             -ldebug \
             -lkernel
 
-      - name: Copy ELF to repository
+      - name: Put ELF into repository
         run: |
           mkdir -p output
           cp ps2_white_screen/white_screen.elf output/
 
-      - name: Commit ELF binary
+      - name: Commit generated ELF
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add output/white_screen.elf
 
           git commit \
             -m "Build PS2 white screen ELF" \
-            || echo "No changes"
+            || echo "No changes to commit"
 
           git push
