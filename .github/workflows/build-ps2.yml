@@ -9,31 +9,14 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: ps2dev/ps2dev:latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y git make gcc g++ cmake patch texinfo flex bison wget curl python3 libgmp-dev libmpfr-dev libmpc-dev
-
-      - name: Download PS2DEV
-        run: |
-          git clone --depth=1 https://github.com/ps2dev/ps2dev.git "$HOME/ps2dev"
-
-      - name: Build PS2DEV
-        run: |
-          export PS2DEV="$HOME/ps2dev"
-          export PS2SDK="$PS2DEV/ps2sdk"
-          export PATH="$PS2DEV/bin:$PS2DEV/ee/bin:$PATH"
-
-          cd "$PS2DEV"
-          chmod +x build-all.sh
-          ./build-all.sh
-
-      - name: Create source
+      - name: Create PS2 project
         run: |
           mkdir -p ps2_white_screen
 
@@ -41,22 +24,9 @@ jobs:
           '#include <tamtypes.h>' \
           '#include <kernel.h>' \
           '#include <debug.h>' \
-          '#include <gsKit.h>' \
-          '#include <dmaKit.h>' \
           '' \
           'int main(void)' \
           '{' \
-          '    GSGLOBAL *gsGlobal;' \
-          '' \
-          '    dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC, D_CTRL_STD_OFF, D_CTRL_RCYC_8);' \
-          '    dmaKit_chan_init(DMA_CHANNEL_GIF);' \
-          '' \
-          '    gsGlobal = gsKit_init_global();' \
-          '    gsKit_init_screen(gsGlobal);' \
-          '' \
-          '    gsKit_clear(gsGlobal, GS_SETREG_RGBAQ(255,255,255,0x80,0));' \
-          '    gsKit_queue_exec(gsGlobal);' \
-          '' \
           '    init_scr();' \
           '    scr_clear();' \
           '' \
@@ -73,28 +43,22 @@ jobs:
 
       - name: Compile ELF
         run: |
-          export PS2DEV="$HOME/ps2dev"
-          export PS2SDK="$PS2DEV/ps2sdk"
-          export PATH="$PS2DEV/bin:$PS2DEV/ee/bin:$PATH"
-
           mkdir -p output
 
           ee-gcc \
             -O2 \
-            -o output/white_screen.elf \
             ps2_white_screen/main.c \
-            -lgsKit \
-            -ldmaKit \
+            -o output/white_screen.elf \
             -ldebug \
             -lkernel
 
-      - name: Commit ELF binary
+      - name: Commit ELF
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add output/white_screen.elf
 
-          git commit -m "Build PS2 white screen ELF" || echo "Nothing to commit"
+          git commit -m "Build PS2 white screen ELF" || echo "No changes"
 
           git push
